@@ -82,6 +82,7 @@ func UserRoleText(role int) string {
 type UserAPI interface {
 	GetUsers(ctx context.Context, opts *UserListOptions) ([]User, Page, error)
 	CreateUser(ctx context.Context, user User) (User, error)
+	CreateOrUpdateUser(ctx context.Context, user User) (User, error)
 }
 
 // GetUsers fetch user list
@@ -132,6 +133,28 @@ func (z *Client) CreateUser(ctx context.Context, user User) (User, error) {
 	if err != nil {
 		return User{}, err
 	}
+	return result.User, nil
+}
+
+// CreateOrUpdateUser creates new user, if that user exists it will update that
+// users value, both cases return the users data
+// ref: https://developer.zendesk.com/rest_api/docs/support/user_fields#create-or-update-a-user-field-option
+func (z *Client) CreateOrUpdateUser(ctx context.Context, user User) (User, error) {
+	var data, result struct {
+		User User `json:"user"`
+	}
+	data.User = user
+
+	body, err := z.post(ctx, "/users/create_or_update.json", data)
+	if err != nil {
+		return User{}, err
+	}
+
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		return User{}, err
+	}
+
 	return result.User, nil
 }
 
