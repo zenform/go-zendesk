@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/nukosuke/go-zendesk/zendesk/sideload"
 )
 
 type CustomField struct {
@@ -116,7 +118,7 @@ type TicketListOptions struct {
 // TicketAPI an interface containing all ticket related methods
 type TicketAPI interface {
 	GetTickets(ctx context.Context, opts *TicketListOptions) ([]Ticket, Page, error)
-	GetTicket(ctx context.Context, id int64) (Ticket, error)
+	GetTicket(ctx context.Context, id int64, sideload ...sideload.SideLoader) (Ticket, error)
 	GetMultipleTickets(ctx context.Context, ticketIDs []int64) ([]Ticket, error)
 	CreateTicket(ctx context.Context, ticket Ticket) (Ticket, error)
 	UpdateTicket(ctx context.Context, ticketID int64, ticket Ticket) (Ticket, error)
@@ -156,12 +158,23 @@ func (z *Client) GetTickets(ctx context.Context, opts *TicketListOptions) ([]Tic
 // GetTicket gets a specified ticket
 //
 // ref: https://developer.zendesk.com/rest_api/docs/support/tickets#show-ticket
-func (z *Client) GetTicket(ctx context.Context, ticketID int64) (Ticket, error) {
+func (z *Client) GetTicket(ctx context.Context, ticketID int64, sideLoad ...sideload.SideLoader) (Ticket, error) {
 	var result struct {
 		Ticket Ticket `json:"ticket"`
 	}
 
-	body, err := z.get(ctx, fmt.Sprintf("/tickets/%d.json", ticketID))
+	var builder includeBuilder
+
+	for _, v := range sideLoad {
+		builder.addKey(v.Key())
+	}
+
+	u, err := builder.path(fmt.Sprintf("/tickets/%d.json", ticketID))
+	if err != nil {
+		return Ticket{}, err
+	}
+
+	body, err := z.get(ctx, u)
 	if err != nil {
 		return Ticket{}, err
 	}
@@ -171,7 +184,14 @@ func (z *Client) GetTicket(ctx context.Context, ticketID int64) (Ticket, error) 
 		return Ticket{}, err
 	}
 
-	return result.Ticket, err
+	for _, sideLoader := range sideLoad {
+		err = sideLoader.Unmarshal(body)
+		if err != nil {
+			return Ticket{}, err
+		}
+	}
+
+	return result.Ticket, nil
 }
 
 // GetMultipleTickets gets multiple specified tickets
